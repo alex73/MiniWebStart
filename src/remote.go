@@ -7,47 +7,53 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 )
 
-func needUpdateZip(remoteUrl string, localDir string) bool {
-	fmt.Print("Checking for updates... ")
+func listRemote(remoteUrl string) fileinfo {
+	fmt.Print("Checking '" + remoteUrl + "' for updates... ")
 
-	resp1, err1 := http.Head(remoteUrl)
-	if err1 != nil {
-		panic(fmt.Sprintf("Error server response: %v", err1.Error()))
+	resp, err := http.Head(remoteUrl)
+	if err != nil {
+		panic(fmt.Sprintf("Error server response: %v", err.Error()))
 	}
-	if resp1.StatusCode != 200 {
-		panic(fmt.Sprintf("Error server response: %v", resp1.StatusCode))
+	if resp.StatusCode != 200 {
+		panic(fmt.Sprintf("Error server response: %v", resp.StatusCode))
 	}
-	httpLen, err2 := strconv.ParseInt(resp1.Header.Get("Content-Length"), 10, 64)
-	if err2 != nil {
-		panic(fmt.Sprintf("Wrong server length response: %v", err2.Error()))
-	}
-	fi, err3 := os.Stat(localDir + ZIP_STORE)
-	var localLen int64 = -1
-	if !os.IsNotExist(err3) {
-		if err3 != nil {
-			panic(fmt.Sprintf("Wrong local file stat: %v", err3.Error()))
-		}
-		localLen = fi.Size()
-	}
-
-	if localLen != httpLen {
-		fmt.Println("need to update")
-		return true
+	httpLenStr := resp.Header.Get("Content-Length")
+	var httpLen int64
+	if httpLenStr == "" {
+		httpLen = -1
 	} else {
-		fmt.Println("no need")
-		return false
+		httpLen, err = strconv.ParseInt(httpLenStr, 10, 64)
+		if err != nil {
+			panic(fmt.Sprintf("Wrong server length response: %v, error: %v", httpLenStr, err.Error()))
+		}
 	}
+	tm := parseTime(resp.Header.Get("Last-Modified"))
+	fmt.Println("Done")
+	return fileinfo{size: httpLen, lastModified: tm}
 }
 
-func updateZip(remoteUrl string, localDir string) {
-	fmt.Print("Updating... ")
-	zipPath := localDir + ZIP_STORE
-	if errMkDir := os.MkdirAll(filepath.Dir(zipPath), os.ModePerm); errMkDir != nil {
+func updateFromRemote(remoteUrl string, localPath string) {
+	fmt.Print("Updating from ", remoteUrl, "... ")
+
+	lastModified := downloadFromRemote(remoteUrl, localPath)
+
+	if lastModified >= 0 {
+		err4 := os.Chtimes(localPath, time.Now(), time.Unix(lastModified, 0))
+		if err4 != nil {
+			panic(fmt.Sprintf("Error save local file: %v", err4.Error()))
+		}
+	}
+	fmt.Println("Done")
+}
+
+func downloadFromRemote(remoteUrl string, localPath string) int64 {
+	if errMkDir := os.MkdirAll(filepath.Dir(localPath), os.ModePerm); errMkDir != nil {
 		panic(fmt.Sprintf("Error create directory: %v", errMkDir.Error()))
 	}
-	out, err1 := os.Create(zipPath)
+	out, err1 := os.Create(localPath)
 	if err1 != nil {
 		panic(fmt.Sprintf("Error create local file: %v", err1.Error()))
 	}
@@ -61,6 +67,8 @@ func updateZip(remoteUrl string, localDir string) {
 	}
 	defer resp.Body.Close()
 
+	var result = parseTime(resp.Header.Get("Last-Modified"))
+
 	var downloaded int64 = 0
 	for {
 		count, err3 := io.CopyN(out, resp.Body, 4*1024*1024)
@@ -73,5 +81,17 @@ func updateZip(remoteUrl string, localDir string) {
 		downloaded += count
 		fmt.Printf("%v MiB ", downloaded/1024/1024)
 	}
-	fmt.Println("Done")
+
+  return result
+}
+
+func parseTime(t string) int64 {
+	if t == "" {
+		return -1
+	}
+	lastModified, err := time.Parse(time.RFC1123, t)
+	if err != nil {
+		panic(fmt.Sprintf("Wrong date from server: %v, error: %v", t, err.Error()))
+	}
+	return lastModified.Unix()
 }
