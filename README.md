@@ -62,3 +62,8 @@ Execution parameters
 ====================
 
 You can set command line parameter like "--remote=https://yousite/desc.xml", or define constant in the predefined.go for declare deployment description location. Other command line parameters will be sent to startup application.
+
+Building
+========
+
+You can build application by "DOCKER_BUILDKIT=1 docker build --output=out ." command.
