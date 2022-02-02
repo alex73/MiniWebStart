@@ -49,12 +49,15 @@ func main() {
 	refreshWorkingFiles()
 
 	fmt.Print("Starting... ", localDir+WORK_DIR)
-	startup := getStartupFile(desc)
+	startup := localDir + WORK_DIR + getStartupFile(desc)
 
 	var cmd *exec.Cmd
 	cmd = exec.Command(startup, args...)
-	cmd.Dir = localDir + WORK_DIR
-	fmt.Print("Starting ",startup,"...")
+//	cmd.Dir = localDir + WORK_DIR
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	fmt.Println("Starting ",startup,"...")
 	err := cmd.Start()
 	if err != nil {
 		panic("Error execution startup script : " + err.Error())
@@ -174,7 +177,10 @@ func getMiniDir() string {
 	var localDir = ""
 	switch os_name() {
 	case "windows":
-		localDir = os.Getenv("APPDATA")
+		localDir = os.Getenv("LOCALAPPDATA")
+		if localDir == "" {
+			localDir = os.Getenv("APPDATA")
+		}
 		if localDir == "" {
 			panic("Environment variable APPDATA is not defined")
 		}
@@ -187,7 +193,7 @@ func getMiniDir() string {
 		if localDir == "" {
 			panic("Environment variable HOME is not defined")
 		}
-		localDir += "/.local/share"
+		localDir += "/.cache"
 		if _, err := os.Stat(localDir); os.IsNotExist(err) {
 			panic("Directory " + localDir + " is not exist")
 		}
@@ -197,7 +203,7 @@ func getMiniDir() string {
 		if localDir == "" {
 			panic("Environment variable HOME is not defined")
 		}
-		localDir += "/Library/Application Support"
+		localDir += "/Library/Caches"
 		if _, err := os.Stat(localDir); os.IsNotExist(err) {
 			panic("Directory " + localDir + " is not exist")
 		}
